@@ -133,93 +133,93 @@ func main() {
 	}
 
 	app.Flags = []cli.Flag{
-		cli.IntFlag{
-			Name:   "verbosity",
-			Value:  2,
-			Usage:  "verbosity (0-5)",
-			EnvVar: "VERBOSITY",
+		&cli.IntFlag{
+			Name:    "verbosity",
+			Value:   2,
+			Usage:   "verbosity (0-5)",
+			EnvVars: []string{"VERBOSITY"},
 		},
-		cli.StringFlag{
-			Name:   "target-host-list, t",
-			Usage:  "Comma delimited target hosts",
-			EnvVar: "TARGET_HOST_LIST",
+		&cli.StringFlag{
+			Name:    "target-host-list, t",
+			Usage:   "Comma delimited target hosts",
+			EnvVars: []string{"TARGET_HOST_LIST"},
 		},
-		cli.StringFlag{
-			Name:   "target-path, p",
-			Usage:  "HTTP path",
-			EnvVar: "TARGET_PATH",
+		&cli.StringFlag{
+			Name:    "target-path, p",
+			Usage:   "HTTP path",
+			EnvVars: []string{"TARGET_PATH"},
 		},
-		cli.StringFlag{
-			Name:   "headers, H",
-			Usage:  "Comma delimited headers",
-			EnvVar: "HTTP_HEADERS",
+		&cli.StringFlag{
+			Name:    "headers, H",
+			Usage:   "Comma delimited headers",
+			EnvVars: []string{"HTTP_HEADERS"},
 		},
-		cli.StringFlag{
-			Name:   "method, m",
-			Value:  "POST",
-			Usage:  "HTTP method",
-			EnvVar: "HTTP_METHOD",
+		&cli.StringFlag{
+			Name:    "method, m",
+			Value:   "POST",
+			Usage:   "HTTP method",
+			EnvVars: []string{"HTTP_METHOD"},
 		},
-		cli.StringFlag{
-			Name:   "expected-statuses, e",
-			Value:  "200",
-			Usage:  "Comma delimited list of expected HTTP status",
-			EnvVar: "HTTP_EXPECTED_STATUSES",
+		&cli.StringFlag{
+			Name:    "expected-statuses, e",
+			Value:   "200",
+			Usage:   "Comma delimited list of expected HTTP status",
+			EnvVars: []string{"HTTP_EXPECTED_STATUSES"},
 		},
-		cli.IntFlag{
-			Name:   "discard-ratio",
-			Value:  0,
-			Usage:  "Ratio of discarded messages. 0 => none, 1 => 1 in 2, 2 => 2 in 3",
-			EnvVar: "DISCARD_RATIO",
+		&cli.IntFlag{
+			Name:    "discard-ratio",
+			Value:   0,
+			Usage:   "Ratio of discarded messages. 0 => none, 1 => 1 in 2, 2 => 2 in 3",
+			EnvVars: []string{"DISCARD_RATIO"},
 		},
-		cli.StringFlag{
-			Name:   "kafka-broker-list, b",
-			Usage:  "Comma delimited kafka broker list.",
-			EnvVar: "KAFKA_BROKER_LIST",
+		&cli.StringFlag{
+			Name:    "kafka-broker-list, b",
+			Usage:   "Comma delimited kafka broker list.",
+			EnvVars: []string{"KAFKA_BROKER_LIST"},
 		},
-		cli.StringFlag{
-			Name:   "kafka-topic, T",
-			Usage:  "Kafka topic.",
-			EnvVar: "KAFKA_TOPIC",
+		&cli.StringFlag{
+			Name:    "kafka-topic, T",
+			Usage:   "Kafka topic.",
+			EnvVars: []string{"KAFKA_TOPIC"},
 		},
-		cli.StringFlag{
-			Name:   "kafka-consumer-id, i",
-			Value:  fmt.Sprintf("%s-%d", host, os.Getpid()),
-			Usage:  "Kafka consumer id.",
-			EnvVar: "KAFKA_CONSUMER_ID",
+		&cli.StringFlag{
+			Name:    "kafka-consumer-id, i",
+			Value:   fmt.Sprintf("%s-%d", host, os.Getpid()),
+			Usage:   "Kafka consumer id.",
+			EnvVars: []string{"KAFKA_CONSUMER_ID"},
 		},
-		cli.StringFlag{
-			Name:   "kafka-consumer-group, g",
-			Usage:  "Kafka consumer group.",
-			EnvVar: "KAFKA_CONSUMER_GROUP",
+		&cli.StringFlag{
+			Name:    "kafka-consumer-group, g",
+			Usage:   "Kafka consumer group.",
+			EnvVars: []string{"KAFKA_CONSUMER_GROUP"},
 		},
-		cli.StringFlag{
-			Name:   "kafka-start-offset, o",
-			Value:  "newest",
-			Usage:  "Kafka offset to start with (newest or oldest)",
-			EnvVar: "KAFKA_START_OFFSET",
+		&cli.StringFlag{
+			Name:    "kafka-start-offset, o",
+			Value:   "newest",
+			Usage:   "Kafka offset to start with (newest or oldest)",
+			EnvVars: []string{"KAFKA_START_OFFSET"},
 		},
-		cli.IntFlag{
-			Name:   "max-offset-lag",
-			Value:  0,
-			Usage:  "Max offset lag before aborting",
-			EnvVar: "MAX_OFFSET_LAG",
+		&cli.IntFlag{
+			Name:    "max-offset-lag",
+			Value:   0,
+			Usage:   "Max offset lag before aborting",
+			EnvVars: []string{"MAX_OFFSET_LAG"},
 		},
-		cli.IntFlag{
-			Name:   "kafka-commit-batch, c",
-			Value:  1000,
-			Usage:  "Commit consumed messages every X messages.",
-			EnvVar: "KAFKA_COMMIT_BATCH",
+		&cli.IntFlag{
+			Name:    "kafka-commit-batch, c",
+			Value:   1000,
+			Usage:   "Commit consumed messages every X messages.",
+			EnvVars: []string{"KAFKA_COMMIT_BATCH"},
 		},
-		cli.StringFlag{
-			Name:   "metrics-report-url, r",
-			Usage:  "Where to send OpenTSDB metrics.",
-			EnvVar: "METRICS_REPORT_URL",
+		&cli.StringFlag{
+			Name:    "metrics-report-url, r",
+			Usage:   "Where to send OpenTSDB metrics.",
+			EnvVars: []string{"METRICS_REPORT_URL"},
 		},
-		cli.StringFlag{
-			Name:   "metrics-tags",
-			Usage:  "Comma delimited list of default tags",
-			EnvVar: "METRICS_TAGS",
+		&cli.StringFlag{
+			Name:    "metrics-tags",
+			Usage:   "Comma delimited list of default tags",
+			EnvVars: []string{"METRICS_TAGS"},
 		},
 	}
 
