@@ -8,78 +8,90 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
-	"golang.org/x/net/context"
-
-	"github.com/Shopify/sarama"
-	cluster "github.com/bsm/sarama-cluster"
-	"github.com/codegangsta/cli"
-	"github.com/mathpl/go-tsdmetrics"
-	"github.com/rcrowley/go-metrics"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
-var version = "0.4"
+func main() {
 
-var maxLag = 0
-
-func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
-	valsSent := make(map[string]int64, 0)
-	valsCommitted := make(map[string]int64, 0)
-	valsHWM := make(map[string]int64, 0)
-
-	fn := func(n string, tm tsdmetrics.TaggedMetric) {
-		switch n {
-		case "kafka_httpcat.consumer.sent":
-			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
-				log.Printf("Unexpect metric type.")
-			} else {
-				valsSent[tm.GetTags()["partition"]] = m.Value()
-			}
-		case "kafka_httpcat.consumer.committed":
-			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
-				log.Printf("Unexpect metric type.")
-			} else {
-				valsCommitted[tm.GetTags()["partition"]] = m.Value()
-			}
-		case "kafka_httpcat.consumer.high_water_mark":
-			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
-				log.Printf("Unexpect metric type.")
-			} else {
-				valsHWM[tm.GetTags()["partition"]] = m.Value()
-			}
-		}
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: %s <broker> <group> <topics..>\n",
+			os.Args[0])
+		os.Exit(1)
 	}
 
-	r.Each(fn)
+	broker := os.Args[1]
+	group := os.Args[2]
+	topics := os.Args[3:]
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
-	var maxLag int64
+	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":     broker,
+		"broker.address.family": "v4",
+		"group.id":              group,
+		"session.timeout.ms":    6000,
+		"auto.offset.reset":     "earliest"})
 
-	for partition, hwmOffset := range valsHWM {
-		if sentOffset, ok := valsSent[partition]; ok {
-			i := r.GetOrRegister("kafka_httpcat.consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
-			if m, ok := i.(metrics.Gauge); ok {
-				offsetLag := hwmOffset - sentOffset
-				m.Update(offsetLag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create consumer: %s\n", err)
+		os.Exit(1)
+	}
 
-				if offsetLag > maxLag {
-					maxLag = offsetLag
+	fmt.Printf("Created Consumer %v\n", c)
+
+	err = c.SubscribeTopics(topics, nil)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to subscribe: %s\n", err)
+		os.Exit(1)
+	}
+
+	httpHeaders, err := stringListToHeaderMap([]string{"Content-Encoding: gzip"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse headers: %s\n", err)
+		os.Exit(1)
+	}
+
+	expectedStatuses, err := commaDelimitedToIntList("204,400")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse expected statuses: %s\n", err)
+		os.Exit(1)
+	}
+	sender := NewHTTPSender([]string{"opentsdb.jumpy:4242"}, "/api/put", "POST", httpHeaders, expectedStatuses)
+
+	run := true
+
+	for run {
+		select {
+		case sig := <-sigchan:
+			fmt.Printf("Caught signal %v: terminating\n", sig)
+			run = false
+		default:
+			ev := c.Poll(100)
+			if ev == nil {
+				continue
+			}
+
+			switch e := ev.(type) {
+			case *kafka.Message:
+				if err := sender.RRSend(e.Value); err != nil {
+					log.Printf("Error send data: %s\n", err)
 				}
-			} else {
-				log.Print("Unexpected metric type")
-			}
-		}
 
-		if committedOffset, ok := valsCommitted[partition]; ok {
-			i := r.GetOrRegister("kafka_httpcat.consumer.committed.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
-			if m, ok := i.(metrics.Gauge); ok {
-				offsetLag := hwmOffset - committedOffset
-				m.Update(offsetLag)
-			} else {
-				log.Print("Unexpected metric type")
+			case kafka.Error:
+				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
+				if e.Code() == kafka.ErrAllBrokersDown {
+					run = false
+				}
+			default:
+				fmt.Printf("Ignored %v\n", e)
 			}
 		}
 	}
+
+	fmt.Printf("Closing consumer\n")
+	c.Close()
 }
 
 func commaDelimitedToStringList(s string) []string {
@@ -118,245 +130,4 @@ func commaDelimitedToIntList(s string) ([]int, error) {
 		}
 	}
 	return intList, nil
-}
-
-func main() {
-	app := cli.NewApp()
-	app.Name = "kafka_httpcat"
-	app.Usage = "Forward kafka data to http endpoint"
-	app.Version = version
-
-	host, err := os.Hostname()
-	if err != nil {
-		log.Printf("Unable to get hostname: %s", err)
-		os.Exit(1)
-	}
-
-	app.Flags = []cli.Flag{
-		&cli.IntFlag{
-			Name:    "verbosity",
-			Value:   2,
-			Usage:   "verbosity (0-5)",
-			EnvVars: []string{"VERBOSITY"},
-		},
-		&cli.StringFlag{
-			Name:    "target-host-list, t",
-			Usage:   "Comma delimited target hosts",
-			EnvVars: []string{"TARGET_HOST_LIST"},
-		},
-		&cli.StringFlag{
-			Name:    "target-path, p",
-			Usage:   "HTTP path",
-			EnvVars: []string{"TARGET_PATH"},
-		},
-		&cli.StringFlag{
-			Name:    "headers, H",
-			Usage:   "Comma delimited headers",
-			EnvVars: []string{"HTTP_HEADERS"},
-		},
-		&cli.StringFlag{
-			Name:    "method, m",
-			Value:   "POST",
-			Usage:   "HTTP method",
-			EnvVars: []string{"HTTP_METHOD"},
-		},
-		&cli.StringFlag{
-			Name:    "expected-statuses, e",
-			Value:   "200",
-			Usage:   "Comma delimited list of expected HTTP status",
-			EnvVars: []string{"HTTP_EXPECTED_STATUSES"},
-		},
-		&cli.IntFlag{
-			Name:    "discard-ratio",
-			Value:   0,
-			Usage:   "Ratio of discarded messages. 0 => none, 1 => 1 in 2, 2 => 2 in 3",
-			EnvVars: []string{"DISCARD_RATIO"},
-		},
-		&cli.StringFlag{
-			Name:    "kafka-broker-list, b",
-			Usage:   "Comma delimited kafka broker list.",
-			EnvVars: []string{"KAFKA_BROKER_LIST"},
-		},
-		&cli.StringFlag{
-			Name:    "kafka-topic, T",
-			Usage:   "Kafka topic.",
-			EnvVars: []string{"KAFKA_TOPIC"},
-		},
-		&cli.StringFlag{
-			Name:    "kafka-consumer-id, i",
-			Value:   fmt.Sprintf("%s-%d", host, os.Getpid()),
-			Usage:   "Kafka consumer id.",
-			EnvVars: []string{"KAFKA_CONSUMER_ID"},
-		},
-		&cli.StringFlag{
-			Name:    "kafka-consumer-group, g",
-			Usage:   "Kafka consumer group.",
-			EnvVars: []string{"KAFKA_CONSUMER_GROUP"},
-		},
-		&cli.StringFlag{
-			Name:    "kafka-start-offset, o",
-			Value:   "newest",
-			Usage:   "Kafka offset to start with (newest or oldest)",
-			EnvVars: []string{"KAFKA_START_OFFSET"},
-		},
-		&cli.IntFlag{
-			Name:    "max-offset-lag",
-			Value:   0,
-			Usage:   "Max offset lag before aborting",
-			EnvVars: []string{"MAX_OFFSET_LAG"},
-		},
-		&cli.IntFlag{
-			Name:    "kafka-commit-batch, c",
-			Value:   1000,
-			Usage:   "Commit consumed messages every X messages.",
-			EnvVars: []string{"KAFKA_COMMIT_BATCH"},
-		},
-		&cli.StringFlag{
-			Name:    "metrics-report-url, r",
-			Usage:   "Where to send OpenTSDB metrics.",
-			EnvVars: []string{"METRICS_REPORT_URL"},
-		},
-		&cli.StringFlag{
-			Name:    "metrics-tags",
-			Usage:   "Comma delimited list of default tags",
-			EnvVars: []string{"METRICS_TAGS"},
-		},
-	}
-
-	app.Action = func(c *cli.Context) error {
-		expectedStatuses, err := commaDelimitedToIntList(c.String("expected-statuses"))
-		if err != nil {
-			return fmt.Errorf("Expected http status must be an integer: %s", err)
-		}
-
-		httpHeaderList := commaDelimitedToStringList(c.String("headers"))
-		httpHeaders, err := stringListToHeaderMap(httpHeaderList)
-		if err != nil {
-			return fmt.Errorf("Unable to parse headers: %s", err)
-		}
-
-		targetHosts := commaDelimitedToStringList(c.String("target-host-list"))
-		defaultTags, err := tsdmetrics.TagsFromString(c.String("metrics-tags"))
-		if err != nil {
-			return err
-		}
-		defaultTags = defaultTags.AddTags(tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
-
-		rootRegistry := tsdmetrics.NewSegmentedTaggedRegistry("", defaultTags, nil)
-		tsdmetrics.RegisterTaggedRuntimeMemStats(rootRegistry)
-		metricsRegistry := tsdmetrics.NewSegmentedTaggedRegistry("kafka_httpcat", nil, rootRegistry)
-		metricsTsdb := tsdmetrics.TaggedOpenTSDB{Addr: c.String("metrics-report-url"), Registry: rootRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
-
-		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
-
-		discard := c.Int("discard-ratio")
-		if discard != 0 {
-			log.Printf("Disarding all but every %d messages", discard)
-		}
-
-		// Init config
-		config := cluster.NewConfig()
-		config.Consumer.Return.Errors = true
-		config.Group.Return.Notifications = true
-
-		switch c.String("kafka-start-offset") {
-		case "oldest":
-			config.Consumer.Offsets.Initial = sarama.OffsetOldest
-		case "newest":
-			config.Consumer.Offsets.Initial = sarama.OffsetNewest
-
-			// Only when starting with newest
-			maxLag = c.Int("max-lag")
-		default:
-			return fmt.Errorf("offset should be `oldest` or `newest`")
-		}
-
-		brokerList := strings.Split(c.String("kafka-broker-list"), ",")
-		topicList := strings.Split(c.String("kafka-topic"), ",")
-
-		// Init consumer, consume errors & messages
-		consumer, err := cluster.NewConsumer(brokerList, c.String("kafka-consumer-group"), topicList, config)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		wait := make(chan os.Signal, 1)
-		signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
-
-		go func() {
-			for err := range consumer.Errors() {
-				fmt.Printf("Error: %s\n", err.Error())
-
-				// Abort all
-				wait <- syscall.SIGTERM
-			}
-		}()
-
-		go func() {
-			for note := range consumer.Notifications() {
-				fmt.Printf("Rebalanced: %+v\n", note)
-			}
-		}()
-
-		batchSize := int64(c.Int("kafka-commit-batch"))
-
-		hwmUpdate := func(r tsdmetrics.TaggedRegistry) {
-			hwms := consumer.HighWaterMarks()
-			for _, hwm := range hwms {
-				for partition, offset := range hwm {
-					tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
-					m := metricsRegistry.GetOrRegister("consumer.high_water_mark", tags, metrics.NewGauge())
-					m.(metrics.Gauge).Update(offset)
-				}
-			}
-		}
-
-		go func() {
-			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
-
-			discardCounter := 0
-			for msg := range consumer.Messages() {
-				discardCounter++
-				if discard != 0 && discardCounter%discard != 0 {
-					continue
-				}
-
-				if err := sender.RRSend(msg.Value); err != nil {
-					log.Printf("Error send data: %s\n", err)
-				}
-
-				tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", msg.Partition)}
-				s := metricsRegistry.GetOrRegister("consumer.sent", tags, metrics.NewGauge())
-				s.(metrics.Gauge).Update(msg.Offset)
-
-				if msg.Offset%batchSize == 0 {
-					consumer.MarkOffset(msg, "")
-					c := metricsRegistry.GetOrRegister("consumer.committed", tags, metrics.NewGauge())
-					c.(metrics.Gauge).Update(msg.Offset)
-					log.Printf("Commited offset partition:%d offset:%d\n", msg.Partition, msg.Offset)
-				}
-			}
-		}()
-
-		collectFn := tsdmetrics.RuntimeCaptureFn
-		collectFn = append(collectFn, hwmUpdate)
-		collectFn = append(collectFn, generateConsumerLag)
-
-		go metricsTsdb.RunWithPreprocessing(context.Background(), collectFn)
-
-		<-wait
-		consumer.CommitOffsets()
-
-		if err := consumer.Close(); err != nil {
-			fmt.Printf("Failed to close consumer: %s\n", err)
-		}
-
-		return nil
-	}
-
-	err = app.Run(os.Args)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 }
