@@ -80,7 +80,7 @@ func main() {
 				openTsdbLongTermDiscardCounter++
 				openTsdbShortTermDiscardCounter++
 
-				if bosunDiscardCounter%openTsdbBosunDiscardRatio == 0 || openTsdbBosunDiscardRatio == 0 {
+				if openTsdbBosunDiscardRatio == 0 || bosunDiscardCounter%openTsdbBosunDiscardRatio == 0 {
 					bosunDiscardCounter = 0
 					if err := bosunDatapointSender.RRSend(e.Value); err != nil {
 						log.Printf("[BosunDatapoint] Error send data: %s\n", err)
@@ -90,14 +90,14 @@ func main() {
 					}
 				}
 
-				if openTsdbShortTermDiscardCounter%openTsdbShortTermRetentionDiscardRatio == 0 || openTsdbShortTermRetentionDiscardRatio == 0 {
+				if openTsdbShortTermRetentionDiscardRatio == 0 || openTsdbShortTermDiscardCounter%openTsdbShortTermRetentionDiscardRatio == 0 {
 					openTsdbShortTermDiscardCounter = 0
 					if err := openTsdbShortTermSender.RRSend(e.Value); err != nil {
 						log.Printf("[OpenTsdbShortTerm] Error send data: %s\n", err)
 					}
 				}
 
-				if openTsdbLongTermDiscardCounter%openTsdbLongTermRetentionDiscardRatio == 0 || openTsdbLongTermRetentionDiscardRatio == 0 {
+				if openTsdbLongTermRetentionDiscardRatio == 0 || openTsdbLongTermDiscardCounter%openTsdbLongTermRetentionDiscardRatio == 0 {
 					openTsdbLongTermDiscardCounter = 0
 					if err := openTsdbLegacySender.RRSend(e.Value); err != nil {
 						log.Printf("[OpenTsdbShortTerm] Error send data: %s\n", err)

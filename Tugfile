@@ -2,7 +2,7 @@ application "dpc/kafka2-httpcat-dev" {
   network "v4compat" {}
 
   container "metrics" {
-    image = "jcr.io/infra/kafka_httpcat:1.0.0@sha256:0dd0d3d7c5cf259ccc686ae2430990b764419041f05b280db20d6657c67ad111"
+    image = "jcr.io/infra/kafka_httpcat:1.0.0@sha256:aa5d7b4da8ba3740bfafd44350677a75334a51844bb6a934777ab75883b13993"
     image_pull_policy = "IfNotPresent"
 
     env "_all" {
