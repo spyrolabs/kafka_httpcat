@@ -1,0 +1,97 @@
+application "infra/kafka2-httpcat" {
+  network "v4compat" {}
+
+  container "metrics" {
+    image = "jcr.io/infra/kafka_httpcat:0.4.6-dev@sha256:dd77f87d67f07e5480c225080a48bd8e51a6e40e34ba47649b98f3415fbd9d5c"
+    image_pull_policy = "IfNotPresent"
+
+    env "_all" {
+      TARGET_HOST_LIST = "opentsdb.jumpy:4242"
+      TARGET_PATH = "/api/put"
+      HTTP_HEADERS = "Content-Encoding: gzip"
+      HTTP_EXPECTED_STATUSES = "204,400"
+      DISCARD_RATIO = "5"
+
+      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
+      KAFKA_TOPIC = "metrics"
+      KAFKA_CONSUMER_GROUP = "tug_metrics_k2consumer"
+      KAFKA_START_OFFSET = "newest"
+      KAFKA_COMMIT_BATCH = "21"
+
+      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
+      SENDER_COUNT = "10"
+    }
+
+    resources {
+      cpu = "20m"
+      memory = "64Mi"
+    }
+
+    limits {
+     cpu = "100m"
+     memory = "256Mi"
+    }
+  }
+
+  container "metrics-bosun" {
+    image = "jcr.io/infra/kafka_httpcat:0.4.5@sha256:eb7dca4c47d44efd1eb69d2b23a034531e324f9cec9cb74974ab96dffded570d"
+    image_pull_policy = "IfNotPresent"
+
+    env "_all" {
+      TARGET_HOST_LIST = "bosun.jumpy:8070"
+      TARGET_PATH = "/api/put"
+      HTTP_HEADERS = "Content-Encoding: gzip"
+      HTTP_EXPECTED_STATUSES = "204"
+      DISCARD_RATIO = "400"
+
+      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
+      KAFKA_TOPIC = "metrics"
+      KAFKA_CONSUMER_GROUP = "tug_bosun_metrics_k2consumer"
+      KAFKA_START_OFFSET = "newest"
+      KAFKA_COMMIT_BATCH = "10"
+
+      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
+      SENDER_COUNT = "10"
+    }
+
+    resources {
+      cpu = "20m"
+      memory = "64Mi"
+    }
+
+    limits {
+     cpu = "100m"
+     memory = "256Mi"
+    }
+  }
+
+  container "metrics-metadata-bosun" {
+    image = "jcr.io/infra/kafka_httpcat:0.4.5@sha256:eb7dca4c47d44efd1eb69d2b23a034531e324f9cec9cb74974ab96dffded570d"
+    image_pull_policy = "IfNotPresent"
+
+    env "_all" {
+      TARGET_HOST_LIST = "bosun.jumpy:8070"
+      TARGET_PATH = "/api/metadata/put"
+      HTTP_EXPECTED_STATUSES = "204,500"
+
+      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
+      KAFKA_TOPIC = "metrics_metadata"
+      KAFKA_CONSUMER_GROUP = "tug_metrics_metadata_k2consumer"
+      KAFKA_START_OFFSET = "newest"
+      KAFKA_COMMIT_BATCH = "40"
+
+      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
+      SENDER_COUNT = "10"
+    }
+
+    resources {
+      cpu = "20m"
+      memory = "65Mi"
+    }
+
+    limits {
+     cpu = "100m"
+     memory = "256Mi"
+    }
+  }
+}

@@ -58,7 +58,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to parse expected statuses: %s\n", err)
 		os.Exit(1)
 	}
-	sender := NewHTTPSender([]string{"opentsdb.jumpy:4242"}, "/api/put", "POST", httpHeaders, expectedStatuses)
+	sender := NewHTTPSender([]string{"opentsdb.jumpy:4242", "opentsdb.slc-1f.jumpy:4242", "opentsdb.slc-1z.jumpy:4242"}, "/api/put", "POST", httpHeaders, expectedStatuses)
 
 	run := true
 

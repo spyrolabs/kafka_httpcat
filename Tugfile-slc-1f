@@ -1,0 +1,35 @@
+application "infra/kafka2-httpcat-slc-1f-test" {
+  network "v4compat" {}
+
+  container "metrics-slc-1f" {
+    image = "jcr.io/infra/kafka_httpcat:1.0.0@sha256:048c39ba7c7b48f4d1a66e79017c3494565a1fc4f63c8302d1048cd92716ff19"
+    image_pull_policy = "IfNotPresent"
+
+    env "_all" {
+      TARGET_HOST_LIST = "opentsdb.slc-1f.jumpy:4242"
+      TARGET_PATH = "/api/put"
+      HTTP_HEADERS = "Content-Encoding: gzip"
+      HTTP_EXPECTED_STATUSES = "204,400"
+
+      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
+      KAFKA_TOPIC = "metrics"
+      KAFKA_CONSUMER_GROUP = "tug_metrics_k2consumer_slc-1f"
+      KAFKA_START_OFFSET = "newest"
+      KAFKA_COMMIT_BATCH = "50"
+
+      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
+      SENDER_COUNT = "10"
+    }
+
+    resources {
+      cpu = "20m"
+      memory = "64Mi"
+    }
+
+    limits {
+     cpu = "100m"
+     memory = "256Mi"
+    }
+  }
+}
+
