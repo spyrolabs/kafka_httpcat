@@ -8,7 +8,7 @@ compile:
 	docker build -f build.Dockerfile -t $(IMAGE)_builder .
 	docker run -e=VERSION=$(VERSION) -v=`pwd`/build:/build -ti $(IMAGE)_builder /go/build.sh
 
-build:
+build: compile
 	docker build -t jcr.io/$(IMAGE):$(TAG) .
 
 push: build

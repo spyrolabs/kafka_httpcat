@@ -1,97 +1,36 @@
-application "infra/kafka2-httpcat" {
+application "dpc/kafka2-httpcat-dev" {
   network "v4compat" {}
 
   container "metrics" {
-    image = "jcr.io/infra/kafka_httpcat:0.4.6-dev@sha256:dd77f87d67f07e5480c225080a48bd8e51a6e40e34ba47649b98f3415fbd9d5c"
+    image = "jcr.io/infra/kafka_httpcat:1.0.0@sha256:0dd0d3d7c5cf259ccc686ae2430990b764419041f05b280db20d6657c67ad111"
     image_pull_policy = "IfNotPresent"
 
     env "_all" {
-      TARGET_HOST_LIST = "opentsdb.jumpy:4242"
-      TARGET_PATH = "/api/put"
-      HTTP_HEADERS = "Content-Encoding: gzip"
-      HTTP_EXPECTED_STATUSES = "204,400"
-      DISCARD_RATIO = "5"
 
-      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
+
+      KAFKA_BROKER = "kafka-2.local.jumpy:9092"
       KAFKA_TOPIC = "metrics"
-      KAFKA_CONSUMER_GROUP = "tug_metrics_k2consumer"
-      KAFKA_START_OFFSET = "newest"
-      KAFKA_COMMIT_BATCH = "21"
+      KAFKA_CONSUMER_GROUP = "tug_metrics_kafka2"
 
-      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
-      SENDER_COUNT = "10"
+      OPEN_TSDB_BOSUN_URL = "bosun.jumpy:8070"
+      OPEN_TSDB_LEGACY_URL = "opentsdb.jumpy:4242"
+      OPEN_TSDB_SHORT_TERM_URL = "opentsdb.slc-1f.jumpy:4242"
+      OPEN_TSDB_LONG_TERM_URL =  "opentsdb.slc-1z.jumpy:4242"
+      
+      OPEN_TSDB_BOSUN_DISCARD_RATIO = 400
+      OPEN_TSDB_SHORT_TERM_DISCARD_RATIO = 0
+      OPEN_TSDB_LONG_TERM_DISCARD_RATIO = 5
     }
 
     resources {
-      cpu = "20m"
-      memory = "64Mi"
+      cpu = "60m"
+      memory = "128Mi"
     }
 
     limits {
-     cpu = "100m"
+     cpu = "150m"
      memory = "256Mi"
     }
   }
 
-  container "metrics-bosun" {
-    image = "jcr.io/infra/kafka_httpcat:0.4.5@sha256:eb7dca4c47d44efd1eb69d2b23a034531e324f9cec9cb74974ab96dffded570d"
-    image_pull_policy = "IfNotPresent"
-
-    env "_all" {
-      TARGET_HOST_LIST = "bosun.jumpy:8070"
-      TARGET_PATH = "/api/put"
-      HTTP_HEADERS = "Content-Encoding: gzip"
-      HTTP_EXPECTED_STATUSES = "204"
-      DISCARD_RATIO = "400"
-
-      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
-      KAFKA_TOPIC = "metrics"
-      KAFKA_CONSUMER_GROUP = "tug_bosun_metrics_k2consumer"
-      KAFKA_START_OFFSET = "newest"
-      KAFKA_COMMIT_BATCH = "10"
-
-      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
-      SENDER_COUNT = "10"
-    }
-
-    resources {
-      cpu = "20m"
-      memory = "64Mi"
-    }
-
-    limits {
-     cpu = "100m"
-     memory = "256Mi"
-    }
-  }
-
-  container "metrics-metadata-bosun" {
-    image = "jcr.io/infra/kafka_httpcat:0.4.5@sha256:eb7dca4c47d44efd1eb69d2b23a034531e324f9cec9cb74974ab96dffded570d"
-    image_pull_policy = "IfNotPresent"
-
-    env "_all" {
-      TARGET_HOST_LIST = "bosun.jumpy:8070"
-      TARGET_PATH = "/api/metadata/put"
-      HTTP_EXPECTED_STATUSES = "204,500"
-
-      KAFKA_BROKER_LIST = "kafka-2.local.jumpy:9092"
-      KAFKA_TOPIC = "metrics_metadata"
-      KAFKA_CONSUMER_GROUP = "tug_metrics_metadata_k2consumer"
-      KAFKA_START_OFFSET = "newest"
-      KAFKA_COMMIT_BATCH = "40"
-
-      METRICS_REPORT_URL = "http://metrics.infra:4242/api/put"
-      SENDER_COUNT = "10"
-    }
-
-    resources {
-      cpu = "20m"
-      memory = "65Mi"
-    }
-
-    limits {
-     cpu = "100m"
-     memory = "256Mi"
-    }
-  }
 }

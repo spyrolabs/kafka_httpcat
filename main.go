@@ -13,16 +13,19 @@ import (
 )
 
 func main() {
+	broker := os.Getenv("KAFKA_BROKER")
+	group := os.Getenv("KAFKA_CONSUMER_GROUP")
+	topic := os.Getenv("KAFKA_TOPIC")
 
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <broker> <group> <topics..>\n",
-			os.Args[0])
-		os.Exit(1)
-	}
+	openTsdbBosunUrl := os.Getenv("OPEN_TSDB_BOSUN_URL")
+	openTsdbShortTermRetentionUrl := os.Getenv("OPEN_TSDB_SHORT_TERM_URL")
+	openTsdbLongTermRetentionUrl := os.Getenv("OPEN_TSDB_LONG_TERM_URL")
+	openTsdbLegacyUrl := os.Getenv("OPEN_TSDB_LEGACY_URL")
 
-	broker := os.Args[1]
-	group := os.Args[2]
-	topics := os.Args[3:]
+	openTsdbBosunDiscardRatio, _ := strconv.Atoi(os.Getenv("OPEN_TSDB_BOSUN_DISCARD_RATIO"))
+	openTsdbShortTermRetentionDiscardRatio, _ := strconv.Atoi(os.Getenv("OPEN_TSDB_SHORT_TERM_DISCARD_RATIO"))
+	openTsdbLongTermRetentionDiscardRatio, _ := strconv.Atoi(os.Getenv("OPEN_TSDB_LONG_TERM_DISCARD_RATIO"))
+
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -40,26 +43,24 @@ func main() {
 
 	fmt.Printf("Created Consumer %v\n", c)
 
-	err = c.SubscribeTopics(topics, nil)
+	err = c.SubscribeTopics([]string{topic}, nil)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to subscribe: %s\n", err)
 		os.Exit(1)
 	}
 
-	httpHeaders, err := stringListToHeaderMap([]string{"Content-Encoding: gzip"})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse headers: %s\n", err)
-		os.Exit(1)
-	}
+	httpHeaders, _ := stringListToHeaderMap([]string{"Content-Encoding: gzip"})
+	expectedStatuses, _ := commaDelimitedToIntList("204,400")
 
-	expectedStatuses, err := commaDelimitedToIntList("204,400")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse expected statuses: %s\n", err)
-		os.Exit(1)
-	}
-	sender := NewHTTPSender([]string{"opentsdb.jumpy:4242", "opentsdb.slc-1f.jumpy:4242", "opentsdb.slc-1z.jumpy:4242"}, "/api/put", "POST", httpHeaders, expectedStatuses)
-
+	bosunDatapointSender := NewHTTPSender([]string{openTsdbBosunUrl}, "/api/put", "POST", httpHeaders, expectedStatuses)
+	bosunMetadataSender := NewHTTPSender([]string{openTsdbBosunUrl}, "/api/metadata/put", "POST", httpHeaders, expectedStatuses)
+	openTsdbLegacySender := NewHTTPSender([]string{openTsdbLegacyUrl}, "/api/put", "POST", httpHeaders, expectedStatuses)
+	openTsdbLongTermSender := NewHTTPSender([]string{openTsdbLongTermRetentionUrl}, "/api/put", "POST", httpHeaders, expectedStatuses)
+	openTsdbShortTermSender := NewHTTPSender([]string{openTsdbShortTermRetentionUrl}, "/api/put", "POST", httpHeaders, expectedStatuses)
+	bosunDiscardCounter := 0
+	openTsdbLongTermDiscardCounter := 0
+	openTsdbShortTermDiscardCounter := 0
 	run := true
 
 	for run {
@@ -72,11 +73,38 @@ func main() {
 			if ev == nil {
 				continue
 			}
-
 			switch e := ev.(type) {
 			case *kafka.Message:
-				if err := sender.RRSend(e.Value); err != nil {
-					log.Printf("Error send data: %s\n", err)
+
+				bosunDiscardCounter++
+				openTsdbLongTermDiscardCounter++
+				openTsdbShortTermDiscardCounter++
+
+				if bosunDiscardCounter%openTsdbBosunDiscardRatio == 0 || openTsdbBosunDiscardRatio == 0 {
+					bosunDiscardCounter = 0
+					if err := bosunDatapointSender.RRSend(e.Value); err != nil {
+						log.Printf("[BosunDatapoint] Error send data: %s\n", err)
+					}
+					if err := bosunMetadataSender.RRSend(e.Value); err != nil {
+						log.Printf("[BosunMetadata] Error send data: %s\n", err)
+					}
+				}
+
+				if openTsdbShortTermDiscardCounter%openTsdbShortTermRetentionDiscardRatio == 0 || openTsdbShortTermRetentionDiscardRatio == 0 {
+					bosunDiscardCounter = 0
+					if err := openTsdbShortTermSender.RRSend(e.Value); err != nil {
+						log.Printf("[OpenTsdbShortTerm] Error send data: %s\n", err)
+					}
+				}
+
+				if openTsdbLongTermDiscardCounter%openTsdbLongTermRetentionDiscardRatio == 0 || openTsdbLongTermRetentionDiscardRatio == 0 {
+					openTsdbLongTermDiscardCounter = 0
+					if err := openTsdbLegacySender.RRSend(e.Value); err != nil {
+						log.Printf("[OpenTsdbShortTerm] Error send data: %s\n", err)
+					}
+					if err := openTsdbLongTermSender.RRSend(e.Value); err != nil {
+						log.Printf("[OpenTsdbLongTerm] Error send data: %s\n", err)
+					}
 				}
 
 			case kafka.Error:
