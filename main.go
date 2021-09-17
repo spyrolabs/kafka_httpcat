@@ -91,7 +91,7 @@ func main() {
 				}
 
 				if openTsdbShortTermDiscardCounter%openTsdbShortTermRetentionDiscardRatio == 0 || openTsdbShortTermRetentionDiscardRatio == 0 {
-					bosunDiscardCounter = 0
+					openTsdbShortTermDiscardCounter = 0
 					if err := openTsdbShortTermSender.RRSend(e.Value); err != nil {
 						log.Printf("[OpenTsdbShortTerm] Error send data: %s\n", err)
 					}
